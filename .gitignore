@@ -1,0 +1,11 @@
+# Ambiente Virtual (Pastas de ferramentas)
+venv/
+.venv/
+env/
+
+# Banco de Dados Local (Para não sobrescrever o da empresa)
+logistica.db
+
+# Arquivos temporários do Python
+__pycache__/
+*.pyc
