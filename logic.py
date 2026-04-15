@@ -25,7 +25,6 @@ def extrair_prefixo(sku):
     return match.group(1) if match else "ID"
 
 def gerar_pdf_lote(lista_dados):
-    # Formato Etiqueta 100x50mm
     pdf = FPDF(orientation='L', unit='mm', format=(50, 100))
     pdf.set_margin(0)
     pdf.set_auto_page_break(False)
@@ -56,7 +55,6 @@ def gerar_pdf_lote(lista_dados):
     return bytes(pdf.output())
 
 def gerar_relatorio_conferencia(pedido, lista_dados):
-    # Formato Relatório A4
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.add_page()
     
@@ -80,6 +78,6 @@ def gerar_relatorio_conferencia(pedido, lista_dados):
         
     pdf.ln(10)
     pdf.set_font("Helvetica", "I", 8)
-    pdf.cell(0, 10, "Relatório gerado automaticamente pelo Sistema Logístico Paulo", align='R')
+    pdf.cell(0, 10, "Relatório gerado automaticamente pelo Sistema Logística Logcare", align='R')
     
     return bytes(pdf.output())
