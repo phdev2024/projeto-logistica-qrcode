@@ -3,66 +3,65 @@ import database
 import logic
 import pandas as pd
 
-# Inicia o banco ao abrir o app
 database.criar_tabelas()
 
-st.set_page_config(page_title="Logística - Etiquetas Zebra", page_icon="📦")
-
+st.set_page_config(page_title="Logística - Etiquetas", page_icon="📦")
 st.title("📦 Sistema de Etiquetas Logísticas")
-st.markdown("---")
 
-st.sidebar.header("Menu Principal")
-aba = st.sidebar.radio("Navegação:", ["Gerar Etiquetas", "Consultar Banco"])
+aba = st.sidebar.radio("Navegação:", ["Gerar Etiquetas", "Expedição", "Consultar Banco"])
 
 if aba == "Gerar Etiquetas":
-    st.subheader("🛠️ Configurar Impressão")
-    
-    sku_selecionado = st.selectbox("Selecione o SKU do Produto", list(logic.PRODUTOS.keys()))
+    st.subheader("🛠️ Gerar Etiqueta Visual")
+    sku_selecionado = st.selectbox("Selecione o SKU", list(logic.PRODUTOS.keys()))
     descricao = logic.PRODUTOS[sku_selecionado]
-    st.info(f"**Item selecionado:** {descricao}")
     
     col1, col2 = st.columns(2)
     with col1:
-        pedido = st.text_input("Número do Pedido", placeholder="Ex: 4500123")
+        pedido = st.text_input("Número do Pedido")
     with col2:
-        qtd = st.number_input("Quantidade de Volumes", min_value=1, value=1, step=1)
+        qtd = st.number_input("Quantidade (será gerado o primeiro código)", min_value=1, value=1)
 
-    if st.button("Gerar e Registrar Etiquetas"):
+    if st.button("Gerar Prévia e Salvar"):
         if not pedido:
-            st.warning("⚠️ Informe o número do pedido.")
+            st.warning("Informe o pedido.")
         else:
             prefixo = logic.extrair_prefixo(sku_selecionado)
-            
-            # BUSCA O ÚLTIMO NÚMERO REGISTRADO NO BANCO PARA ESSE PREFIXO
             ultimo_valor = database.buscar_ultimo_num(prefixo)
             
-            conteudo_zpl = ""
-            progresso = st.progress(0)
+            # Geramos a primeira do lote para prévia
+            proximo_num = ultimo_valor + 1
+            qrcode_final = f"{prefixo}{str(proximo_num).zfill(10)}"
             
-            for i in range(1, int(qtd) + 1):
-                # O novo número será o último que estava no banco + i
-                novo_sequencial = ultimo_valor + i
-                num_seq_formatado = str(novo_sequencial).zfill(10)
-                qrcode_final = f"{prefixo}{num_seq_formatado}"
-                
-                database.salvar_etiqueta(qrcode_final, sku_selecionado, pedido)
-                conteudo_zpl += logic.formatar_zpl(qrcode_final, sku_selecionado, descricao)
-                progresso.progress(i / int(qtd))
+            # Salva no banco
+            database.salvar_etiqueta(qrcode_final, sku_selecionado, pedido)
             
-            st.success(f"✅ {qtd} etiquetas geradas! Próximo número disponível: {prefixo}{str(ultimo_valor + qtd + 1).zfill(10)}")
+            # Gera a imagem
+            img_data = logic.gerar_etiqueta_img(qrcode_final, sku_selecionado, descricao)
+            
+            st.image(img_data, caption="Prévia da Etiqueta Gerada", use_container_width=True)
             
             st.download_button(
-                label="📥 Baixar Arquivo ZPL",
-                data=conteudo_zpl,
-                file_name=f"pedido_{pedido}_etiquetas.zpl",
-                mime="text/plain"
+                label="📥 Baixar Etiqueta para Imprimir",
+                data=img_data,
+                file_name=f"etiqueta_{qrcode_final}.png",
+                mime="image/png"
             )
+            st.success(f"Registrado no banco como {qrcode_final}")
+
+elif aba == "Expedição":
+    st.subheader("🚚 Módulo de Expedição")
+    codigo_lido = st.text_input("Bipe o QR Code aqui", key="scan")
+    if codigo_lido:
+        resultado = database.atualizar_status_expedicao(codigo_lido)
+        if "Sucesso" in resultado:
+            st.success(resultado)
+            st.balloons()
+        else:
+            st.error(resultado)
 
 elif aba == "Consultar Banco":
-    st.subheader("🔍 Histórico de Geração (Rastreabilidade)")
+    st.subheader("🔍 Histórico")
     dados = database.listar_etiquetas()
     if dados:
-        df = pd.DataFrame(dados, columns=["QR Code", "SKU Produto", "Pedido", "Data de Criação", "Status"])
+        df = pd.DataFrame(dados, columns=["QR Code", "SKU", "Pedido", "Data", "Status"])
         st.dataframe(df, use_container_width=True)
-    else:
-        st.info("O banco de dados está vazio.")

@@ -8,6 +8,7 @@ def conectar():
 def criar_tabelas():
     conn = conectar()
     cursor = conn.cursor()
+    # Criamos a tabela com as colunas que precisamos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS etiquetas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +25,6 @@ def criar_tabelas():
 def salvar_etiqueta(qrcode, produto, pedido):
     conn = conectar()
     cursor = conn.cursor()
-    # Pega data e hora local do computador (Brasília)
     agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     try:
         cursor.execute('''
@@ -38,19 +38,39 @@ def salvar_etiqueta(qrcode, produto, pedido):
         conn.close()
 
 def buscar_ultimo_num(prefixo):
-    """Busca o maior número já usado para um prefixo (ex: LK)"""
     conn = conectar()
     cursor = conn.cursor()
-    # Busca o qrcode que começa com o prefixo e pega o maior valor
     cursor.execute("SELECT qrcode FROM etiquetas WHERE qrcode LIKE ? ORDER BY qrcode DESC LIMIT 1", (f"{prefixo}%",))
     resultado = cursor.fetchone()
     conn.close()
-    
     if resultado:
-        # Extrai apenas os números do código (ex: LK0000000005 -> 5)
         apenas_numeros = re.sub(r'\D', '', resultado[0])
         return int(apenas_numeros)
     return 0
+
+# NOVO: Função para dar baixa na expedição
+def atualizar_status_expedicao(qrcode):
+    conn = conectar()
+    cursor = conn.cursor()
+    agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    
+    # 1. Verifica se o QR Code existe
+    cursor.execute("SELECT status FROM etiquetas WHERE qrcode = ?", (qrcode,))
+    resultado = cursor.fetchone()
+    
+    if resultado:
+        if resultado[0] == 'Expedido':
+            conn.close()
+            return "Aviso: Este item já saiu!"
+        
+        # 2. Se existe e está pendente, muda para Expedido
+        cursor.execute("UPDATE etiquetas SET status = 'Expedido' WHERE qrcode = ?", (qrcode,))
+        conn.commit()
+        conn.close()
+        return "Sucesso: Item expedido!"
+    
+    conn.close()
+    return "Erro: Código não encontrado."
 
 def listar_etiquetas():
     conn = conectar()
