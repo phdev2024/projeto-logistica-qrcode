@@ -1,4 +1,4 @@
-from PIL import Image, ImageDraw, ImageFont
+from fpdf import FPDF
 import qrcode
 import io
 
@@ -15,46 +15,47 @@ def extrair_prefixo(sku):
     match = re.match(r"([a-zA-Z]+)", sku)
     return match.group(1) if match else "ID"
 
-def gerar_etiqueta_img(codigo_qr, sku, descricao):
-    # Criamos uma imagem branca (proporção 10x5cm)
-    largura, altura = 800, 400
-    imagem = Image.new('RGB', (largura, altura), color='white')
-    draw = ImageDraw.Draw(imagem)
-    
-    # 1. Gerar o QR Code
-    qr = qrcode.QRCode(version=1, box_size=10, border=2)
-    qr.add_data(codigo_qr)
-    qr.make(fit=True)
-    img_qr = qr.make_image(fill_color="black", back_color="white").convert('RGB')
-    
-    # Redimensionar QR Code para ficar proporcional e colar
-    img_qr = img_qr.resize((300, 300))
-    imagem.paste(img_qr, (30, 30))
-    
-    # 2. Configurar Fontes (Tenta Arial, se não tiver usa a padrão)
-    try:
-        fonte_sku = ImageFont.truetype("arial.ttf", 60)
-        fonte_desc = ImageFont.truetype("arial.ttf", 35)
-        fonte_mini = ImageFont.truetype("arial.ttf", 20)
-    except:
-        fonte_sku = ImageFont.load_default()
-        fonte_desc = ImageFont.load_default()
-        fonte_mini = ImageFont.load_default()
+def gerar_pdf_lote(lista_dados):
+    """
+    Gera um PDF onde cada página é uma etiqueta de 100mm x 50mm.
+    lista_dados deve ser uma lista de dicionários ou tuplas com (qrcode, sku, desc)
+    """
+    # 'L' = Landscape (Deitado), 'mm' = Milímetros, format = (Altura, Largura)
+    pdf = FPDF(orientation='L', unit='mm', format=(50, 100))
+    pdf.set_margin(0)
+    pdf.set_auto_page_break(False)
 
-    # 3. Escrever as informações
-    draw.text((360, 60), sku, fill="black", font=fonte_sku)
-    
-    # Quebra de linha simples para a descrição (máximo 22 caracteres por linha)
-    import textwrap
-    linhas = textwrap.wrap(descricao, width=22)
-    y_text = 140
-    for linha in linhas:
-        draw.text((360, y_text), linha, fill="black", font=fonte_desc)
-        y_text += 45
+    for item in lista_dados:
+        cod_qr, sku, desc = item
+        pdf.add_page()
         
-    draw.text((30, 340), codigo_qr, fill="black", font=fonte_mini)
-
-    # Converter para bytes para o Streamlit
-    buf = io.BytesIO()
-    imagem.save(buf, format='PNG')
-    return buf.getvalue()
+        # 1. Gerar imagem do QR Code em memória
+        qr = qrcode.QRCode(version=1, box_size=10, border=0)
+        qr.add_data(cod_qr)
+        qr.make(fit=True)
+        img_qr = qr.make_image(fill_color="black", back_color="white")
+        
+        img_buffer = io.BytesIO()
+        img_qr.save(img_buffer, format='PNG')
+        img_buffer.seek(0)
+        
+        # 2. Desenhar no PDF
+        # QR Code (40x40mm)
+        pdf.image(img_buffer, x=5, y=5, w=40, h=40)
+        
+        # SKU (Texto em destaque)
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.set_xy(48, 10)
+        pdf.cell(45, 10, txt=sku, ln=True)
+        
+        # Descrição (Texto com quebra automática)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.set_xy(48, 20)
+        pdf.multi_cell(w=47, h=6, txt=desc)
+        
+        # Código em texto pequeno abaixo do QR
+        pdf.set_font("Helvetica", "", 8)
+        pdf.text(x=5, y=47, txt=cod_qr)
+        
+    # Adicionamos o bytes() para converter o formato e o Streamlit aceitar
+    return bytes(pdf.output())
