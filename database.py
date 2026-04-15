@@ -1,81 +1,69 @@
 import sqlite3
-import re
-from datetime import datetime
-
-def conectar():
-    return sqlite3.connect('logistica.db')
 
 def criar_tabelas():
-    conn = conectar()
+    conn = sqlite3.connect('logistica.db')
     cursor = conn.cursor()
-    # Criamos a tabela com as colunas que precisamos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS etiquetas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            qrcode TEXT UNIQUE,
-            produto_cod TEXT,
+            qrcode TEXT PRIMARY KEY,
+            sku TEXT,
             pedido TEXT,
-            data_criacao TEXT,
+            data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
             status TEXT DEFAULT 'Pendente'
         )
     ''')
     conn.commit()
     conn.close()
 
-def salvar_etiqueta(qrcode, produto, pedido):
-    conn = conectar()
+def salvar_etiqueta(qrcode, sku, pedido):
+    conn = sqlite3.connect('logistica.db')
     cursor = conn.cursor()
-    agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    try:
-        cursor.execute('''
-            INSERT INTO etiquetas (qrcode, produto_cod, pedido, data_criacao)
-            VALUES (?, ?, ?, ?)
-        ''', (qrcode, produto, pedido, agora))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        pass 
-    finally:
-        conn.close()
+    cursor.execute("INSERT INTO etiquetas (qrcode, sku, pedido) VALUES (?, ?, ?)", 
+                   (qrcode, sku, pedido))
+    conn.commit()
+    conn.close()
 
 def buscar_ultimo_num(prefixo):
-    conn = conectar()
+    conn = sqlite3.connect('logistica.db')
     cursor = conn.cursor()
+    # Busca o maior número sequencial para aquele prefixo específico
     cursor.execute("SELECT qrcode FROM etiquetas WHERE qrcode LIKE ? ORDER BY qrcode DESC LIMIT 1", (f"{prefixo}%",))
     resultado = cursor.fetchone()
     conn.close()
     if resultado:
-        apenas_numeros = re.sub(r'\D', '', resultado[0])
-        return int(apenas_numeros)
+        # Extrai apenas os números do final do QR Code
+        return int(''.join(filter(str.isdigit, resultado[0])))
     return 0
 
-# NOVO: Função para dar baixa na expedição
 def atualizar_status_expedicao(qrcode):
-    conn = conectar()
+    conn = sqlite3.connect('logistica.db')
     cursor = conn.cursor()
-    agora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    
-    # 1. Verifica se o QR Code existe
     cursor.execute("SELECT status FROM etiquetas WHERE qrcode = ?", (qrcode,))
-    resultado = cursor.fetchone()
+    item = cursor.fetchone()
     
-    if resultado:
-        if resultado[0] == 'Expedido':
+    if item:
+        if item[0] == 'Expedido':
             conn.close()
-            return "Aviso: Este item já saiu!"
-        
-        # 2. Se existe e está pendente, muda para Expedido
+            return "⚠️ Este item já foi expedido anteriormente!"
         cursor.execute("UPDATE etiquetas SET status = 'Expedido' WHERE qrcode = ?", (qrcode,))
         conn.commit()
         conn.close()
-        return "Sucesso: Item expedido!"
-    
+        return f"✅ Item {qrcode} expedido com sucesso!"
     conn.close()
-    return "Erro: Código não encontrado."
+    return "❌ Erro: Código não encontrado no banco de dados."
 
 def listar_etiquetas():
-    conn = conectar()
+    conn = sqlite3.connect('logistica.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT qrcode, produto_cod, pedido, data_criacao, status FROM etiquetas ORDER BY id DESC')
+    cursor.execute("SELECT qrcode, sku, pedido, data_criacao, status FROM etiquetas ORDER BY data_criacao DESC")
+    dados = cursor.fetchall()
+    conn.close()
+    return dados
+
+def buscar_etiquetas_por_pedido(pedido):
+    conn = sqlite3.connect('logistica.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT qrcode, sku, status FROM etiquetas WHERE pedido = ?", (pedido,))
     dados = cursor.fetchall()
     conn.close()
     return dados
