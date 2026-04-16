@@ -2,144 +2,139 @@ import streamlit as st
 import database
 import logic
 import pandas as pd
+import importlib
 
+# 1. INICIALIZAÇÃO DO BANCO E DO ESTADO (ISSO DEVE VIR PRIMEIRO)
 database.criar_tabelas()
 
-st.set_page_config(page_title="Logcare Logística", page_icon="📦")
-
-# --- SISTEMA DE LOGIN ---
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
+st.set_page_config(page_title="Logcare Logística", page_icon="📦")
+
+# 2. SISTEMA DE LOGIN COM SEUS USUÁRIOS REAIS
 if not st.session_state.autenticado:
-    st.subheader("🔐 Acesso Restrito - Logcare Logística")
-    user_input = st.text_input("Usuário")
-    pass_input = st.text_input("Senha", type="password")
+    st.subheader("🔐 Acesso Restrito - Logcare")
+    user_in = st.text_input("Usuário")
+    pass_in = st.text_input("Senha", type="password")
     
     if st.button("Entrar"):
-        if (user_input == "paulo" and pass_input == "log123") or (user_input == "admin" and pass_input == "admin"):
+        usuarios_permitidos = {
+            "Paulo": "log123",
+            "admin": "admin",
+            "Flavia": "logflavia",
+            "Vanessa": "logvanessa",
+            "Vinicius": "logvinicius"
+        }
+        
+        if user_in in usuarios_permitidos and usuarios_permitidos[user_in] == pass_in:
             st.session_state.autenticado = True
-            st.session_state.usuario_logado = "Paulo Henrique"
+            st.session_state.usuario_logado = user_in
             st.rerun()
-
-        elif(user_input == "flavia" and pass_input == "logflavia"):
-            st.session_state.autenticado = True
-            st.session_state.usuario_logado = "Flavia"
-            st.rerun()
-            st.error("Usuário ou senha incorretos")
-
-        elif(user_input == "vanessa" and pass_input == "logvanessa"):
-            st.session_state.autenticado = True
-            st.session_state.usuario_logado = "Vanessa"
-            st.rerun()
-
-        elif(user_input == "vinicius" and pass_input == "logvinicius"):
-            st.session_state.autenticado = True
-            st.session_state.usuario_logado = "Vinicius"
-            st.rerun()
-            
         else:
             st.error("Usuário ou senha incorretos")
-    st.stop()
-# --- INTERFACE DO APP (SÓ ACESSA SE LOGADO) ---
-st.sidebar.write(f"👤 Operador: **{st.session_state.usuario_logado}**")
+    st.stop() # Bloqueia o app aqui se não estiver logado
+
+# 3. CONFIGURAÇÃO DO MENU (SÓ RODA SE LOGADO)
+ADMIN_USER = "Paulo"
+opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco"]
+
+# Adiciona aba de gestão apenas para você
+if st.session_state.usuario_logado == ADMIN_USER:
+    opcoes_menu.append("Gestão de Usuários")
+
+aba = st.sidebar.radio("Navegação:", opcoes_menu)
+
+st.sidebar.divider()
+if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
+    importlib.reload(logic)
+    st.rerun()
+
 if st.sidebar.button("Sair"):
     st.session_state.autenticado = False
     st.rerun()
 
+# --- TÍTULO E CABEÇALHO ---
 st.title("📦 Sistema de Etiquetas QRCODE")
 
-# Cabeçalho com Logo
-col_logo1, col_logo2 = st.columns([1, 4])
-with col_logo1:
-    try:
-        st.image("logo.png", width=100)
-    except:
-        st.write("🏢")
-with col_logo2:
+col_l1, col_l2 = st.columns([1, 4])
+with col_l1:
+    try: st.image("logo.png", width=100)
+    except: st.write("🏢")
+with col_l2:
     st.write("### Logcare Logística")
     st.write("Departamento de Logística e Expedição")
 
-aba = st.sidebar.radio("Navegação:", ["Gerar Etiquetas", "Expedição", "Consultar Banco"])
+# --- CONTEÚDO DAS ABAS ---
 
 if aba == "Gerar Etiquetas":
     st.subheader("🛠️ Emissão de Lote")
-    
-    # Criamos 3 colunas, mas usamos apenas a primeira para o SKU
-    # [2, 1, 1] significa que a primeira coluna é o dobro das outras
-    col_sku, col_vazia1, col_vazia2 = st.columns([2, 1, 1])
-    
-    with col_sku:
-        sku_selecionado = st.selectbox("Selecione o SKU", list(logic.PRODUTOS.keys()))
-        descricao = logic.PRODUTOS[sku_selecionado]
-    
-    # Linha debaixo: Pedido e Quantidade
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col_sel, col_v1 = st.columns([2, 1])
+    with col_sel:
+        sku_sel = st.selectbox("Selecione o SKU", list(logic.PRODUTOS.keys()))
+        descricao = logic.PRODUTOS[sku_sel]
+        st.info(f"Produto: {descricao}")
+
+    col1, col2 = st.columns([2, 1])
     with col1:
         pedido = st.text_input("Número do Pedido")
     with col2:
-        qtd = st.number_input("Quantidade", min_value=1, value=1, step=1)
+        qtd = st.number_input("Quantidade", min_value=1, value=1)
 
     if st.button("Gerar Lote de Etiquetas"):
         if not pedido:
-            st.warning("Informe o número do pedido!")
+            st.warning("Informe o pedido!")
         else:
-            prefixo = logic.extrair_prefixo(sku_selecionado)
-            ultimo_valor = database.buscar_ultimo_num(prefixo)
-            
+            prefixo = logic.extrair_prefixo(sku_sel)
+            ultimo = database.buscar_ultimo_num(prefixo)
             dados_lote = []
             for i in range(1, int(qtd) + 1):
-                novo_codigo = f"{prefixo}{str(ultimo_valor + i).zfill(10)}"
-                # PASSANDO USUÁRIO PARA O BANCO
-                database.salvar_etiqueta(novo_codigo, sku_selecionado, pedido, st.session_state.usuario_logado)
-                dados_lote.append((novo_codigo, sku_selecionado, descricao))
+                novo_cod = f"{prefixo}{str(ultimo + i).zfill(10)}"
+                database.salvar_etiqueta(novo_cod, sku_sel, pedido, st.session_state.usuario_logado)
+                dados_lote.append((novo_cod, sku_sel, descricao))
             
             pdf_bytes = logic.gerar_pdf_lote(dados_lote)
-            st.success(f"✅ {len(dados_lote)} etiquetas geradas por {st.session_state.usuario_logado}!")
-            
-            st.download_button(
-                label="📥 Baixar Etiquetas (PDF)",
-                data=pdf_bytes,
-                file_name=f"lote_pedido_{pedido}.pdf",
-                mime="application/pdf"
-            )
+            st.success(f"✅ Gerado com sucesso por {st.session_state.usuario_logado}!")
+            st.download_button("📥 Baixar Etiquetas (PDF)", pdf_bytes, f"pedido_{pedido}.pdf", "application/pdf")
 
 elif aba == "Expedição":
     st.subheader("🚚 Módulo de Expedição")
-    codigo_lido = st.text_input("Bipe o QR Code aqui", key="scan")
-    if codigo_lido:
-        # PASSANDO USUÁRIO PARA A EXPEDIÇÃO
-        resultado = database.atualizar_status_expedicao(codigo_lido, st.session_state.usuario_logado)
-        if "✅" in resultado:
-            st.success(resultado)
-        else:
-            st.warning(resultado)
+    cod_lido = st.text_input("Bipe o QR Code aqui")
+    if cod_lido:
+        res = database.atualizar_status_expedicao(cod_lido, st.session_state.usuario_logado)
+        st.info(res)
 
 elif aba == "Consultar Banco":
     st.subheader("🔍 Histórico e Relatórios")
     dados = database.listar_etiquetas()
-    
     if dados:
-        df = pd.DataFrame(dados, columns=["QR Code", "SKU", "Pedido", "Data Criação", "Status", "Criado Por", "Expedido Por"])
+        df = pd.DataFrame(dados, columns=["QR Code", "SKU", "Pedido", "Data", "Status", "Criado Por", "Expedido Por"])
         st.dataframe(df, use_container_width=True)
         
         st.divider()
-        st.subheader("📋 Gerar Checklist Retroativo")
-        pedidos_unicos = sorted(df['Pedido'].unique())
-        pedido_para_relatorio = st.selectbox("Escolha o pedido", pedidos_unicos)
+        st.subheader("📋 Checklist de Conferência")
+        pedidos_disp = sorted(df['Pedido'].unique())
+        ped_sel = st.selectbox("Escolha o Pedido:", pedidos_disp)
         
-        if st.button("Preparar Relatório"):
-            itens_pedido = database.buscar_etiquetas_por_pedido(pedido_para_relatorio)
-            dados_completos = []
-            for item in itens_pedido:
-                cod, sku, status = item
-                desc = logic.PRODUTOS.get(sku, "Descrição não encontrada")
-                dados_completos.append((cod, sku, desc))
-            
-            pdf_relatorio = logic.gerar_relatorio_conferencia(pedido_para_relatorio, dados_completos)
-            st.download_button(
-                label=f"📥 Baixar Checklist Pedido {pedido_para_relatorio}",
-                data=pdf_relatorio,
-                file_name=f"checklist_pedido_{pedido_para_relatorio}.pdf",
-                mime="application/pdf"
-            )
+        if st.button("Gerar PDF de Checklist"):
+            itens_ped = database.buscar_etiquetas_por_pedido(ped_sel)
+            if itens_ped:
+                dados_conf = []
+                for it in itens_ped:
+                    c, s, stt = it
+                    d = logic.PRODUTOS.get(s, "Descrição não encontrada")
+                    dados_conf.append((c, s, d))
+                pdf_check = logic.gerar_relatorio_conferencia(ped_sel, dados_conf)
+                st.download_button(f"📥 Baixar Checklist {ped_sel}", pdf_check, f"check_{ped_sel}.pdf", "application/pdf")
+
+elif aba == "Gestão de Usuários":
+    st.subheader("👥 Gestão de Acessos (Admin)")
+    st.write("Atualmente, os usuários estão configurados no código.")
+    # Aqui você pode ver quem está logado no momento
+    st.success(f"Você está logado como ADMINISTRADOR: {st.session_state.usuario_logado}")
+    
+    # Lista simples para conferência
+    usuarios_lista = ["Paulo (Admin)", "admin", "Flavia", "Vanessa", "Vinicius"]
+    st.write("### Usuários com acesso:")
+    for u in usuarios_lista:
+        st.write(f"- {u}")
