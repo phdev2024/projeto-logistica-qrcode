@@ -1,70 +1,79 @@
-import sqlite3
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
+from datetime import datetime
+
+# --- CONFIGURAÇÃO DA CONEXÃO ---
+# Coloque aqui o nome exato do seu arquivo JSON
+NOME_ARQUIVO_JSON = "credenciais.json" 
+# Coloque o nome exato da sua planilha no Drive
+NOME_PLANILHA = "DB_Qrcode" 
+
+def conectar_planilha():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(NOME_ARQUIVO_JSON, scope)
+    client = gspread.authorize(creds)
+    return client.open(NOME_PLANILHA).worksheet("etiquetas")
 
 def criar_tabelas():
-    conn = sqlite3.connect('logistica.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS etiquetas (
-            qrcode TEXT PRIMARY KEY,
-            sku TEXT,
-            pedido TEXT,
-            data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'Pendente',
-            user_criacao TEXT,
-            user_expedicao TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # No Sheets não "criamos tabelas", mas podemos verificar a conexão
+    try:
+        conectar_planilha()
+        print("Conectado ao Google Sheets com sucesso!")
+    except Exception as e:
+        print(f"Erro ao conectar: {e}")
 
 def salvar_etiqueta(qrcode, sku, pedido, usuario):
-    conn = sqlite3.connect('logistica.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO etiquetas (qrcode, sku, pedido, user_criacao) VALUES (?, ?, ?, ?)", 
-                   (qrcode, sku, pedido, usuario))
-    conn.commit()
-    conn.close()
+    sheet = conectar_planilha()
+    data_criacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    # Adiciona a linha na planilha: qrcode, sku, pedido, data, status, criador, expedidor
+    sheet.append_row([qrcode, sku, pedido, data_criacao, "Pendente", usuario, ""])
 
 def buscar_ultimo_num(prefixo):
-    conn = sqlite3.connect('logistica.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT qrcode FROM etiquetas WHERE qrcode LIKE ? ORDER BY qrcode DESC LIMIT 1", (f"{prefixo}%",))
-    resultado = cursor.fetchone()
-    conn.close()
-    if resultado:
-        return int(''.join(filter(str.isdigit, resultado[0])))
-    return 0
+    sheet = conectar_planilha()
+    dados = sheet.get_all_records()
+    if not dados:
+        return 0
+    
+    # Filtra os QRCodes que começam com o prefixo e pega o maior número
+    numeros = []
+    for linha in dados:
+        qr = str(linha.get('qrcode', ''))
+        if qr.startswith(prefixo):
+            # Extrai apenas os números do QR Code
+            num = ''.join(filter(str.isdigit, qr))
+            if num: numeros.append(int(num))
+    
+    return max(numeros) if numeros else 0
 
 def atualizar_status_expedicao(qrcode, usuario):
-    conn = sqlite3.connect('logistica.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT status FROM etiquetas WHERE qrcode = ?", (qrcode,))
-    item = cursor.fetchone()
-    
-    if item:
-        if item[0] == 'Expedido':
-            conn.close()
-            return "⚠️ Este item já foi expedido!"
-        cursor.execute("UPDATE etiquetas SET status = 'Expedido', user_expedicao = ? WHERE qrcode = ?", (usuario, qrcode))
-        conn.commit()
-        conn.close()
-        return f"✅ Item {qrcode} expedido por {usuario}!"
-    conn.close()
-    return "❌ Erro: Código não encontrado."
+    sheet = conectar_planilha()
+    try:
+        # Procura o código na coluna A (qrcode)
+        celula = sheet.find(qrcode)
+        if celula:
+            # Coluna E é Status (5), Coluna G é User Expedição (7)
+            sheet.update_cell(celula.row, 5, "Expedido")
+            sheet.update_cell(celula.row, 7, usuario)
+            return f"✅ Item {qrcode} expedido por {usuario}!"
+        return "❌ Erro: Código não encontrado na planilha."
+    except:
+        return "❌ Erro ao acessar a planilha."
 
 def listar_etiquetas():
-    conn = sqlite3.connect('logistica.db')
-    cursor = conn.cursor()
-    # Adicionamos os usuários na listagem
-    cursor.execute("SELECT qrcode, sku, pedido, data_criacao, status, user_criacao, user_expedicao FROM etiquetas ORDER BY data_criacao DESC")
-    dados = cursor.fetchall()
-    conn.close()
-    return dados
+    sheet = conectar_planilha()
+    # Retorna uma lista de tuplas para manter a compatibilidade com o app.py atual
+    dados = sheet.get_all_records()
+    lista_formatada = []
+    for d in dados:
+        lista_formatada.append((
+            d.get('qrcode'), d.get('sku'), d.get('pedido'), 
+            d.get('data_criacao'), d.get('status'), 
+            d.get('user_criacao'), d.get('user_expedicao')
+        ))
+    return lista_formatada
 
 def buscar_etiquetas_por_pedido(pedido):
-    conn = sqlite3.connect('logistica.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT qrcode, sku, status FROM etiquetas WHERE pedido = ?", (pedido,))
-    dados = cursor.fetchall()
-    conn.close()
-    return dados
+    sheet = conectar_planilha()
+    dados = sheet.get_all_records()
+    return [(d['qrcode'], d['sku'], d['status']) for d in dados if str(d['pedido']) == str(pedido)]
