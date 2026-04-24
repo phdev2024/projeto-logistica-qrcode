@@ -9,3 +9,4 @@ logistica.db
 # Arquivos temporários do Python
 __pycache__/
 *.pyc
+credenciais.json
