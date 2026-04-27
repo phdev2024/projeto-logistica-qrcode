@@ -142,38 +142,41 @@ elif aba == "Consultar Banco":
                     dados_conf.append((c, s, d))
                 pdf_check = logic.gerar_relatorio_conferencia(ped_sel, dados_conf)
                 st.download_button(f"📥 Baixar Checklist {ped_sel}", pdf_check, f"check_{ped_sel}.pdf", "application/pdf")
-                
-# --- NOVO BLOCO: REIMPRESSÃO DE ETIQUETAS ---
+
+# --- BLOCO DE REIMPRESSÃO (LOTE OU INDIVIDUAL) ---
         st.divider()
-        st.subheader("🖨️ Reimprimir Lote de Etiquetas")
-        st.write("Se você já gerou as etiquetas mas precisa imprimir novamente:")
+        st.subheader("🖨️ Reimpressão de Etiquetas")
         
-        ped_reimprimir = st.selectbox("Selecione o Pedido para Reimprimir:", pedidos_disp, key="reimprimir")
+        aba_reimprimir = st.tabs(["Por Pedido (Lote)", "Por Código Único (Individual)"])
         
-        if st.button("Gerar PDF para Reimpressão"):
-            # Busca todos os QR Codes desse pedido no banco
-            itens_reimpressao = database.buscar_etiquetas_por_pedido(ped_reimprimir)
-            
-            if itens_reimpressao:
-                dados_reimprimir = []
-                for item in itens_reimpressao:
-                    # Formato: (qrcode, sku, status)
-                    q, s, stt = item
-                    desc = logic.PRODUTOS.get(s, "Produto não encontrado")
-                    dados_reimprimir.append((q, s, desc))
-                
-                # Usa a mesma função de gerar PDF do lote original
-                pdf_reprint = logic.gerar_pdf_lote(dados_reimprimir)
-                
-                st.success(f"✅ PDF de reimpressão do Pedido {ped_reimprimir} preparado!")
-                st.download_button(
-                    label=f"📥 Baixar Etiquetas do Pedido {ped_reimprimir}",
-                    data=pdf_reprint,
-                    file_name=f"REIMPRESSAO_pedido_{ped_reimprimir}.pdf",
-                    mime="application/pdf"
-                )
-            else:
-                st.warning("Nenhuma etiqueta encontrada para este pedido.")
+        with aba_reimprimir[0]:
+            ped_reimprimir = st.selectbox("Selecione o Pedido:", pedidos_disp, key="re_ped")
+            if st.button("Gerar PDF do Pedido"):
+                itens = database.buscar_etiquetas_por_pedido(ped_reimprimir)
+                if itens:
+                    dados = [(it[0], it[1], logic.PRODUTOS.get(it[1], "N/A")) for it in itens]
+                    pdf = logic.gerar_pdf_lote(dados)
+                    st.download_button(f"📥 Baixar Lote {ped_reimprimir}", pdf, f"lote_{ped_reimprimir}.pdf")
+
+        with aba_reimprimir[1]:
+            cod_individual = st.text_input("Digite o Código do QR Code (ex: LOG0000000001)")
+            if st.button("Gerar Etiqueta Individual"):
+                if cod_individual:
+                    # Busca os dados dessa etiqueta específica no DataFrame que já carregamos na tela
+                    # d[0] é o QR Code, d[1] é o SKU
+                    match = [d for d in dados if d[0] == cod_individual]
+                    
+                    if match:
+                        q, s, p, dt, stt, u1, u2 = match[0]
+                        desc = logic.PRODUTOS.get(s, "Produto não encontrado")
+                        # Geramos o PDF com apenas um item na lista
+                        pdf_uni = logic.gerar_pdf_lote([(q, s, desc)])
+                        st.success(f"✅ Etiqueta {q} localizada!")
+                        st.download_button(f"📥 Baixar Etiqueta {q}", pdf_uni, f"etiqueta_{q}.pdf")
+                    else:
+                        st.error("Código não encontrado no banco de dados.")
+                else:
+                    st.warning("Digite um código válido.")
 
 elif aba == "Gestão de Usuários":
     st.subheader("👥 Gestão de Acessos (Admin)")
