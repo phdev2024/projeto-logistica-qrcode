@@ -142,6 +142,38 @@ elif aba == "Consultar Banco":
                     dados_conf.append((c, s, d))
                 pdf_check = logic.gerar_relatorio_conferencia(ped_sel, dados_conf)
                 st.download_button(f"📥 Baixar Checklist {ped_sel}", pdf_check, f"check_{ped_sel}.pdf", "application/pdf")
+                
+# --- NOVO BLOCO: REIMPRESSÃO DE ETIQUETAS ---
+        st.divider()
+        st.subheader("🖨️ Reimprimir Lote de Etiquetas")
+        st.write("Se você já gerou as etiquetas mas precisa imprimir novamente:")
+        
+        ped_reimprimir = st.selectbox("Selecione o Pedido para Reimprimir:", pedidos_disp, key="reimprimir")
+        
+        if st.button("Gerar PDF para Reimpressão"):
+            # Busca todos os QR Codes desse pedido no banco
+            itens_reimpressao = database.buscar_etiquetas_por_pedido(ped_reimprimir)
+            
+            if itens_reimpressao:
+                dados_reimprimir = []
+                for item in itens_reimpressao:
+                    # Formato: (qrcode, sku, status)
+                    q, s, stt = item
+                    desc = logic.PRODUTOS.get(s, "Produto não encontrado")
+                    dados_reimprimir.append((q, s, desc))
+                
+                # Usa a mesma função de gerar PDF do lote original
+                pdf_reprint = logic.gerar_pdf_lote(dados_reimprimir)
+                
+                st.success(f"✅ PDF de reimpressão do Pedido {ped_reimprimir} preparado!")
+                st.download_button(
+                    label=f"📥 Baixar Etiquetas do Pedido {ped_reimprimir}",
+                    data=pdf_reprint,
+                    file_name=f"REIMPRESSAO_pedido_{ped_reimprimir}.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.warning("Nenhuma etiqueta encontrada para este pedido.")
 
 elif aba == "Gestão de Usuários":
     st.subheader("👥 Gestão de Acessos (Admin)")
