@@ -13,16 +13,24 @@ NOME_PLANILHA = "DB_Qrcode"
 def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Se estiver no Streamlit Cloud, usa as Secrets
+    # 1. Tenta primeiro usar as Secrets (Modo Nuvem/Empresa)
     if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    else:
-        # Se estiver no seu PC, usa o arquivo local
+        try:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            client = gspread.authorize(creds)
+            return client.open(NOME_PLANILHA).worksheet("etiquetas")
+        except Exception as e:
+            st.error(f"Erro ao conectar via Secrets: {e}")
+
+    # 2. Se não houver Secrets, tenta o arquivo local (Seu PC de casa)
+    try:
         creds = ServiceAccountCredentials.from_json_keyfile_name(NOME_ARQUIVO_JSON, scope)
-        
-    client = gspread.authorize(creds)
-    return client.open(NOME_PLANILHA).worksheet("etiquetas")
+        client = gspread.authorize(creds)
+        return client.open(NOME_PLANILHA).worksheet("etiquetas")
+    except FileNotFoundError:
+        st.error("Erro: Arquivo JSON não encontrado localmente e Secrets não configuradas.")
+        raise
 
 def criar_tabelas():
     # No Sheets não "criamos tabelas", mas podemos verificar a conexão
