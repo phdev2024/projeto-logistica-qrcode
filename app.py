@@ -3,8 +3,9 @@ import database
 import logic
 import pandas as pd
 import importlib
+from datetime import datetime
 
-# 1. INICIALIZAÇÃO DO BANCO E DO ESTADO (ISSO DEVE VIR PRIMEIRO)
+# 1. INICIALIZAÇÃO DO BANCO E DO ESTADO
 database.criar_tabelas()
 
 if "autenticado" not in st.session_state:
@@ -12,7 +13,7 @@ if "autenticado" not in st.session_state:
 
 st.set_page_config(page_title="Logcare Logística", page_icon="📦")
 
-# 2. SISTEMA DE LOGIN COM SEUS USUÁRIOS REAIS
+# 2. SISTEMA DE LOGIN
 if not st.session_state.autenticado:
     st.subheader("🔐 Acesso Restrito - Logcare")
     user_in = st.text_input("Usuário")
@@ -33,13 +34,12 @@ if not st.session_state.autenticado:
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos")
-    st.stop() # Bloqueia o app aqui se não estiver logado
+    st.stop()
 
-# 3. CONFIGURAÇÃO DO MENU (SÓ RODA SE LOGADO)
+# 3. CONFIGURAÇÃO DO MENU
 ADMIN_USER = "Paulo"
 opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco"]
 
-# Adiciona aba de gestão apenas para você
 if st.session_state.usuario_logado == ADMIN_USER:
     opcoes_menu.append("Gestão de Usuários")
 
@@ -54,7 +54,6 @@ if st.sidebar.button("Sair"):
     st.session_state.autenticado = False
     st.rerun()
 
-# --- TÍTULO E CABEÇALHO ---
 st.title("📦 Sistema de Etiquetas QRCODE")
 
 col_l1, col_l2 = st.columns([1, 4])
@@ -85,17 +84,34 @@ if aba == "Gerar Etiquetas":
         if not pedido:
             st.warning("Informe o pedido!")
         else:
-            prefixo = logic.extrair_prefixo(sku_sel)
-            ultimo = database.buscar_ultimo_num(prefixo)
-            dados_lote = []
-            for i in range(1, int(qtd) + 1):
-                novo_cod = f"{prefixo}{str(ultimo + i).zfill(10)}"
-                database.salvar_etiqueta(novo_cod, sku_sel, pedido, st.session_state.usuario_logado)
-                dados_lote.append((novo_cod, sku_sel, descricao))
-            
-            pdf_bytes = logic.gerar_pdf_lote(dados_lote)
-            st.success(f"✅ Gerado com sucesso por {st.session_state.usuario_logado}!")
-            st.download_button("📥 Baixar Etiquetas (PDF)", pdf_bytes, f"pedido_{pedido}.pdf", "application/pdf")
+            with st.spinner("Processando lote e salvando no Google Sheets..."):
+                prefixo = logic.extrair_prefixo(sku_sel)
+                ultimo = database.buscar_ultimo_num(prefixo)
+                
+                dados_para_planilha = [] # Lista para o Google Sheets
+                dados_para_pdf = []      # Lista para o PDF
+                
+                data_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                
+                # Prepara o lote todo na memória primeiro
+                for i in range(1, int(qtd) + 1):
+                    novo_cod = f"{prefixo}{str(ultimo + i).zfill(10)}"
+                    
+                    # Formato da linha: QR Code, SKU, Pedido, Data, Status, Criado Por, Expedido Por
+                    linha = [novo_cod, sku_sel, pedido, data_atual, "Pendente", st.session_state.usuario_logado, ""]
+                    dados_para_planilha.append(linha)
+                    
+                    dados_para_pdf.append((novo_cod, sku_sel, descricao))
+                
+                # ENVIO ÚNICO PARA O BANCO (Batch Update) - Resolve o erro 429
+                sucesso = database.salvar_lote_etiquetas(dados_para_planilha)
+                
+                if sucesso:
+                    pdf_bytes = logic.gerar_pdf_lote(dados_para_pdf)
+                    st.success(f"✅ Lote de {qtd} etiquetas salvo e gerado com sucesso!")
+                    st.download_button("📥 Baixar Etiquetas (PDF)", pdf_bytes, f"pedido_{pedido}.pdf", "application/pdf")
+                else:
+                    st.error("Erro ao salvar no banco de dados. Tente novamente.")
 
 elif aba == "Expedição":
     st.subheader("🚚 Módulo de Expedição")
@@ -129,12 +145,11 @@ elif aba == "Consultar Banco":
 
 elif aba == "Gestão de Usuários":
     st.subheader("👥 Gestão de Acessos (Admin)")
-    st.write("Atualmente, os usuários estão configurados no código.")
-    # Aqui você pode ver quem está logado no momento
     st.success(f"Você está logado como ADMINISTRADOR: {st.session_state.usuario_logado}")
     
-    # Lista simples para conferência
-    usuarios_lista = ["Paulo (Admin)", "admin", "Flavia", "Vanessa", "Vinicius"]
-    st.write("### Usuários com acesso:")
-    for u in usuarios_lista:
-        st.write(f"- {u}")
+    usuarios_credenciais = {
+        "Paulo": "log123", "admin": "admin", "Flavia": "logflavia", 
+        "Vanessa": "logvanessa", "Vinicius": "logvinicius"
+    }
+    df_usuarios = pd.DataFrame(list(usuarios_credenciais.items()), columns=["Usuário", "Senha"])
+    st.table(df_usuarios)
