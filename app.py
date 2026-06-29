@@ -24,7 +24,7 @@ if not st.session_state.autenticado:
             "Paulo": "log123",
             "admin": "admin",
             "Flavia": "logflavia",
-            "Vanessa": "logvanessa",
+            "Ray": "logray",
             "Vinicius": "logvinicius"
         }
         
