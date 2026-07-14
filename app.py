@@ -101,7 +101,7 @@ if aba == "Gerar Etiquetas":
                     linha = [novo_cod, sku_sel, pedido, data_atual, "Pendente", st.session_state.usuario_logado, ""]
                     dados_para_planilha.append(linha)
                     
-                    dados_para_pdf.append((novo_cod, sku_sel, descricao))
+                    dados_para_pdf.append((novo_cod, sku_sel, descricao, pedido))
                 
                 # ENVIO ÚNICO PARA O BANCO (Batch Update) - Resolve o erro 429
                 sucesso = database.salvar_lote_etiquetas(dados_para_planilha)
@@ -154,7 +154,7 @@ elif aba == "Consultar Banco":
             if st.button("Gerar PDF do Pedido"):
                 itens = database.buscar_etiquetas_por_pedido(ped_reimprimir)
                 if itens:
-                    dados = [(it[0], it[1], logic.PRODUTOS.get(it[1], "N/A")) for it in itens]
+                    dados = [(it[0], it[1], logic.PRODUTOS.get(it[1], "N/A"), ped_reimprimir) for it in itens]
                     pdf = logic.gerar_pdf_lote(dados)
                     st.download_button(f"📥 Baixar Lote {ped_reimprimir}", pdf, f"lote_{ped_reimprimir}.pdf")
 
@@ -170,7 +170,7 @@ elif aba == "Consultar Banco":
                         q, s, p, dt, stt, u1, u2 = match[0]
                         desc = logic.PRODUTOS.get(s, "Produto não encontrado")
                         # Geramos o PDF com apenas um item na lista
-                        pdf_uni = logic.gerar_pdf_lote([(q, s, desc)])
+                        pdf_uni = logic.gerar_pdf_lote([(q, s, desc, p)])
                         st.success(f"✅ Etiqueta {q} localizada!")
                         st.download_button(f"📥 Baixar Etiqueta {q}", pdf_uni, f"etiqueta_{q}.pdf")
                     else:

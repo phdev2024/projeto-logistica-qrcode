@@ -5,8 +5,12 @@ env/
 
 # Banco de Dados Local (Para não sobrescrever o da empresa)
 logistica.db
+banco_teste.db
 
 # Arquivos temporários do Python
 __pycache__/
 *.pyc
 credenciais.json
+
+# Configurações locais do Streamlit (Segurança)
+.streamlit/secrets.toml

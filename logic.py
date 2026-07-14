@@ -36,14 +36,26 @@ def extrair_prefixo(sku):
     return match.group(1) if match else "ID"
 
 def gerar_pdf_lote(lista_dados):
+    """
+    Gera o PDF de etiquetas em lote para impressora térmica (50mm x 100mm).
+    Agora inclui o Número do Pedido de forma visível ao lado do SKU.
+    """
     pdf = FPDF(orientation='L', unit='mm', format=(50, 100))
     pdf.set_margin(0)
     pdf.set_auto_page_break(False)
 
     for item in lista_dados:
-        cod_qr, sku, desc = item
+        # Se a lista enviada tiver 4 itens (incluindo o pedido), nós pegamos ele.
+        # Se tiver apenas 3 (comportamento antigo de reimpressão), colocamos "N/A".
+        if len(item) == 4:
+            cod_qr, sku, desc, pedido = item
+        else:
+            cod_qr, sku, desc = item
+            pedido = "N/A" # Caso não venha o pedido no lote de reimpressão antigo
+            
         pdf.add_page()
         
+        # 1. GERAÇÃO DO QR CODE
         qr = qrcode.QRCode(version=1, box_size=10, border=0)
         qr.add_data(cod_qr)
         qr.make(fit=True)
@@ -53,13 +65,25 @@ def gerar_pdf_lote(lista_dados):
         img_qr.save(img_buffer, format='PNG')
         img_buffer.seek(0)
         
+        # Posiciona o QR Code no lado esquerdo da etiqueta
         pdf.image(img_buffer, x=5, y=5, w=40, h=40)
-        pdf.set_font("Helvetica", "B", 18)
-        pdf.set_xy(48, 10)
-        pdf.cell(45, 10, txt=str(sku), ln=True)
-        pdf.set_font("Helvetica", "", 11)
-        pdf.set_xy(48, 20)
-        pdf.multi_cell(w=47, h=6, txt=str(desc))
+        
+        # 2. SKU (Texto em Negrito e tamanho 16)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_xy(48, 14)
+        pdf.cell(45, 6, txt=f"SKU: {sku}", ln=True)
+        
+        # 3. NÚMERO DO PEDIDO (Texto em Negrito de tamanho 14 com fundo sutil para destacar)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_xy(48, 6)
+        pdf.cell(45, 6, txt=f"PED: {pedido}", ln=True)
+        
+        # 4. DESCRIÇÃO DO PRODUTO (Tamanho 10)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_xy(48, 22)
+        pdf.multi_cell(w=47, h=5, txt=str(desc))
+        
+        # 5. CÓDIGO DO QR CODE EM TEXTO NO RODAPÉ (Tamanho 8)
         pdf.set_font("Helvetica", "", 8)
         pdf.text(x=5, y=47, txt=str(cod_qr))
         
