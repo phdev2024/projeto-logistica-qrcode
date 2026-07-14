@@ -129,7 +129,8 @@ elif aba == "Consultar Banco":
         
         st.divider()
         st.subheader("📋 Checklist de Conferência")
-        pedidos_disp = sorted(df['Pedido'].unique())
+        # Converte todos os pedidos em texto antes de tentar ordenar, evitando o erro de tipos mistos
+        pedidos_disp = sorted([str(p) for p in df['Pedido'].unique() if p is not None])
         ped_sel = st.selectbox("Escolha o Pedido:", pedidos_disp)
         
         if st.button("Gerar PDF de Checklist"):
