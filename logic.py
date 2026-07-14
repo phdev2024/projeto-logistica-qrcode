@@ -41,7 +41,7 @@ def gerar_pdf_lote(lista_dados):
     Agora inclui o Número do Pedido de forma visível ao lado do SKU.
     """
     pdf = FPDF(orientation='L', unit='mm', format=(50, 100))
-    pdf.set_margin(0)
+    pdf.set_margins(0)
     pdf.set_auto_page_break(False)
 
     for item in lista_dados:
