@@ -319,7 +319,7 @@ def salvar_produtos_sincronizados(produtos_dict):
             st.error(f"Erro crítico ao salvar produtos localmente: {err}")
             return False
 
-
+@st.cache_data(ttl=600)
 def obter_lista_produtos():
     """
     Busca os produtos cadastrados no Google Sheets ou no SQLite local.

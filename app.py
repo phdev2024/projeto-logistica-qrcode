@@ -6,7 +6,6 @@ import importlib
 from datetime import datetime
 import integracao
 import time
-import integracao  # Adicione esta linha!
 
 # 1. INICIALIZAÇÃO DO BANCO E DO ESTADO
 database.criar_tabelas()
@@ -49,19 +48,17 @@ if st.session_state.usuario_logado == ADMIN_USER:
 aba = st.sidebar.radio("Navegação:", opcoes_menu)
 
 st.sidebar.divider()
-# --- SUBSTITUA TODO ESTE BLOCO DA SUA BARRA LATERAL ---
-
 if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
     with st.spinner("Buscando produtos atualizados na API..."):
-        # 1. Busca os produtos diretamente na API já removendo duplicados!
         produtos_api = integracao.obter_produtos_unicos_api()
         
         if produtos_api:
-            # 2. Salva no banco de dados ativo (Google Sheets ou SQLite local)
             sucesso = database.salvar_produtos_sincronizados(produtos_api)
             if sucesso:
+                # LIMPA O CACHE PARA CARREGAR OS PRODUTOS NOVOS
+                st.cache_data.clear()
+                
                 st.sidebar.success(f"✅ {len(produtos_api)} produtos atualizados!")
-                # Força o Streamlit a recarregar a tela com os novos produtos
                 time.sleep(3)
                 st.rerun()
             else:
