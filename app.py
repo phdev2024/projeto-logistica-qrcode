@@ -6,6 +6,7 @@ import importlib
 from datetime import datetime
 import integracao
 import time
+import volumetria
 
 # 1. INICIALIZAÇÃO DO BANCO E DO ESTADO
 database.criar_tabelas()
@@ -40,7 +41,7 @@ if not st.session_state.autenticado:
 
 # 3. CONFIGURAÇÃO DO MENU
 ADMIN_USER = "Paulo"
-opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco"]
+opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco", "Volumetria & Paletes"]
 
 if st.session_state.usuario_logado == ADMIN_USER:
     opcoes_menu.append("Gestão de Usuários")
@@ -65,6 +66,8 @@ if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
                 st.sidebar.error("❌ Erro ao salvar os produtos no banco.")
         else:
             st.sidebar.error("❌ Não foi possível obter dados da API.")
+
+opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco", "Volumetria & Paletes"]
 
 
 st.title("📦 Sistema de Etiquetas QRCODE")
@@ -215,3 +218,6 @@ elif aba == "Gestão de Usuários":
     }
     df_usuarios = pd.DataFrame(list(usuarios_credenciais.items()), columns=["Usuário", "Senha"])
     st.table(df_usuarios)
+
+elif aba == "Volumetria & Paletes":
+    volumetria.renderizar_tela_volumetria(database, integracao)

@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import streamlit as st
+import pandas as pd
 
 # =====================================================================
 # 1. CONFIGURAÇÕES GERAIS
@@ -353,3 +354,51 @@ def obter_lista_produtos():
         except Exception as err:
             print(f"Erro ao ler tabela produtos_api local: {err}")
         return produtos
+
+def obter_lista_produtos_com_medidas():
+    """
+    Busca a lista de produtos com as colunas de cubagem e pack.
+    Retorna um DataFrame do Pandas.
+    """
+    try:
+        aba = conectar_google(nome_aba="Produtos")
+        dados = aba.get_all_values()
+        
+        if len(dados) <= 1:
+            return pd.DataFrame(columns=['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m'])
+            
+        # Pega o cabeçalho e os dados
+        cabecalho = [str(c).strip() for c in dados[0]]
+        linhas = dados[1:]
+        
+        df = pd.DataFrame(linhas, columns=cabecalho)
+        return df
+        
+    except Exception as e:
+        print(f"⚠️ Lendo medidas do SQLite local devido a: {e}")
+        # Retorna um DataFrame vazio padronizado para não travar
+        return pd.DataFrame(columns=['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m'])
+
+def obter_cadastro_bases():
+    """
+    Lê a aba 'Bases' na planilha oficial do Google Sheets.
+    Retorna um dicionário formato { "1": "Matriz - Jandira", "2": "Filial - SP" }.
+    """
+    try:
+        # Tenta conectar explicitamente na aba 'Bases'
+        aba = conectar_google(nome_aba="Bases")
+        dados = aba.get_all_values()
+        
+        bases = {}
+        # Se a aba tiver linhas (pelo menos o cabeçalho e 1 dado)
+        if len(dados) > 1:
+            for linha in dados[1:]: # Pula a linha 0 (cabeçalho)
+                if len(linha) >= 2:
+                    id_b = str(linha[0]).strip()
+                    nome_b = str(linha[1]).strip()
+                    if id_b and nome_b:
+                        bases[id_b] = nome_b
+        return bases
+    except Exception as e:
+        print(f"⚠️ Erro ao ler aba Bases no Sheets: {e}")
+        return {}
