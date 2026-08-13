@@ -4,6 +4,9 @@ import logic
 import pandas as pd
 import importlib
 from datetime import datetime
+import integracao
+import time
+import integracao  # Adicione esta linha!
 
 # 1. INICIALIZAÇÃO DO BANCO E DO ESTADO
 database.criar_tabelas()
@@ -46,13 +49,26 @@ if st.session_state.usuario_logado == ADMIN_USER:
 aba = st.sidebar.radio("Navegação:", opcoes_menu)
 
 st.sidebar.divider()
-if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
-    importlib.reload(logic)
-    st.rerun()
+# --- SUBSTITUA TODO ESTE BLOCO DA SUA BARRA LATERAL ---
 
-if st.sidebar.button("Sair"):
-    st.session_state.autenticado = False
-    st.rerun()
+if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
+    with st.spinner("Buscando produtos atualizados na API..."):
+        # 1. Busca os produtos diretamente na API já removendo duplicados!
+        produtos_api = integracao.obter_produtos_unicos_api()
+        
+        if produtos_api:
+            # 2. Salva no banco de dados ativo (Google Sheets ou SQLite local)
+            sucesso = database.salvar_produtos_sincronizados(produtos_api)
+            if sucesso:
+                st.sidebar.success(f"✅ {len(produtos_api)} produtos atualizados!")
+                # Força o Streamlit a recarregar a tela com os novos produtos
+                time.sleep(3)
+                st.rerun()
+            else:
+                st.sidebar.error("❌ Erro ao salvar os produtos no banco.")
+        else:
+            st.sidebar.error("❌ Não foi possível obter dados da API.")
+
 
 st.title("📦 Sistema de Etiquetas QRCODE")
 
@@ -68,10 +84,19 @@ with col_l2:
 
 if aba == "Gerar Etiquetas":
     st.subheader("🛠️ Emissão de Lote")
+    
+    # 1. Carrega os produtos do Banco (Google Sheets ou SQLite)
+    produtos = database.obter_lista_produtos()
+    
+    # 2. Segurança (Fallback): Se o banco estiver vazio, usa o arquivo local antigo
+    if not produtos:
+        produtos = logic.PRODUTOS
+        
     col_sel, col_v1 = st.columns([2, 1])
     with col_sel:
-        sku_sel = st.selectbox("Selecione o SKU", list(logic.PRODUTOS.keys()))
-        descricao = logic.PRODUTOS[sku_sel]
+        # 3. Agora o dropdown usa a lista inteligente 'produtos'
+        sku_sel = st.selectbox("Selecione o SKU", list(produtos.keys()))
+        descricao = produtos[sku_sel]
         st.info(f"Produto: {descricao}")
 
     col1, col2 = st.columns([2, 1])
@@ -185,7 +210,7 @@ elif aba == "Gestão de Usuários":
     
     usuarios_credenciais = {
         "Paulo": "log123", "admin": "admin", "Flavia": "logflavia", 
-        "Vanessa": "logvanessa", "Vinicius": "logvinicius"
+        "Ray": "logray", "Vinicius": "logvinicius"
     }
     df_usuarios = pd.DataFrame(list(usuarios_credenciais.items()), columns=["Usuário", "Senha"])
     st.table(df_usuarios)
