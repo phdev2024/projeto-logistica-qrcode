@@ -85,8 +85,12 @@ with col_l2:
 if aba == "Gerar Etiquetas":
     st.subheader("🛠️ Emissão de Lote")
     
-    # 1. Carrega os produtos do Banco (Google Sheets ou SQLite)
-    produtos = database.obter_lista_produtos()
+    # 1. Carrega os produtos com tratamento de segurança
+    try:
+        produtos = database.obter_lista_produtos()
+    except Exception as e:
+        st.error(f"⚠️ Aviso do Banco: {e}")
+        produtos = logic.PRODUTOS
     
     # 2. Segurança (Fallback): Se o banco estiver vazio, usa o arquivo local antigo
     if not produtos:
