@@ -15,41 +15,49 @@ database.criar_tabelas()
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
-st.set_page_config(page_title="Logcare Logística", page_icon="📦", layout="wide")
-# Inicializa a sessão com segurança se ainda não existir
-if "usuario_logado" not in st.session_state:
-    st.session_state.usuario_logado = "Visitante"  # Ou None / seu nome padrão
-estilos.aplicar_estilos_customizados()
-# --- CABEÇALHO EXECUTIVO PADRÃO ---
-estilos.renderizar_cabecalho_executivo(st.session_state.get("usuario_logado", "Paulo"))
+st.set_page_config(page_title="Logcare Qrcode", page_icon="📦", layout="wide")
 
-# 2. SISTEMA DE LOGIN
+estilos.aplicar_estilos_customizados()
+
+# 2. SISTEMA DE LOGIN (CARD CENTRALIZADO)
 if not st.session_state.autenticado:
-    st.subheader("🔐 Acesso Restrito - Logcare")
-    user_in = st.text_input("Usuário")
-    pass_in = st.text_input("Senha", type="password")
-    
-    if st.button("Entrar"):
-        usuarios_permitidos = {
-            "Paulo": "log123",
-            "admin": "admin",
-            "Flavia": "logflavia",
-            "Ray": "logray",
-            "Vinicius": "logvinicius"
-        }
+    col_esq, col_centro, col_dir = st.columns([1, 1.1, 1])
+    with col_centro:
+        st.markdown("""
+        <div class="login-card">
+            <h3 style="color: #306359; margin: 0; font-weight: 700;">Acesso ao Sistema Qr Code</h3>
+            <p style="color: #666; font-size: 0.9rem; margin-top: 5px;">Acesso Restrito</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        if user_in in usuarios_permitidos and usuarios_permitidos[user_in] == pass_in:
-            st.session_state.autenticado = True
-            st.session_state.usuario_logado = user_in
-            st.rerun()
-        else:
-            st.error("Usuário ou senha incorretos")
+        with st.form("form_login"):
+            user_in = st.text_input("Usuário")
+            pass_in = st.text_input("Senha", type="password")
+            btn_login = st.form_submit_button("Entrar", use_container_width=True)
+            
+            if btn_login:
+                usuarios_permitidos = {
+                    "Paulo": "log123",
+                    "admin": "admin",
+                    "Flavia": "logflavia",
+                    "Ray": "logray",
+                    "Vinicius": "logvinicius"
+                }
+                
+                if user_in in usuarios_permitidos and usuarios_permitidos[user_in] == pass_in:
+                    st.session_state.autenticado = True
+                    st.session_state.usuario_logado = user_in
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos")
     st.stop()
+
+# --- CABEÇALHO EXECUTIVO PADRÃO (APENAS APÓS LOGIN) ---
+estilos.renderizar_cabecalho_executivo(st.session_state.get("usuario_logado", "Paulo"))
 
 # 3. CONFIGURAÇÃO DO MENU EXECUTIVO
 ADMIN_USER = "Paulo"
 
-# Opções com ícones intuitivos e padronizados
 opcoes_menu = [
     "🏷️ Emissão de Etiquetas",
     "🚚 Módulo de Expedição",
@@ -70,9 +78,7 @@ if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
         if produtos_api:
             sucesso = database.salvar_produtos_sincronizados(produtos_api)
             if sucesso:
-                # LIMPA O CACHE PARA CARREGAR OS PRODUTOS NOVOS
                 st.cache_data.clear()
-                
                 st.sidebar.success(f"✅ {len(produtos_api)} produtos atualizados!")
                 time.sleep(3)
                 st.rerun()
@@ -81,27 +87,22 @@ if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
         else:
             st.sidebar.error("❌ Não foi possível obter dados da API.")
 
-opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco", "Volumetria & Paletes"]
-
 # --- CONTEÚDO DAS ABAS ---
 
 if aba == "🏷️ Emissão de Etiquetas":
     st.subheader("🏷️ Emissão de Etiquetas")
     
-    # 1. Carrega os produtos com tratamento de segurança
     try:
         produtos = database.obter_lista_produtos()
     except Exception as e:
         st.error(f"⚠️ Aviso do Banco: {e}")
         produtos = logic.PRODUTOS
     
-    # 2. Segurança (Fallback): Se o banco estiver vazio, usa o arquivo local antigo
     if not produtos:
         produtos = logic.PRODUTOS
         
     col_sel, col_v1 = st.columns([2, 1])
     with col_sel:
-        # 3. Agora o dropdown usa a lista inteligente 'produtos'
         sku_sel = st.selectbox("Selecione o SKU", list(produtos.keys()))
         descricao = produtos[sku_sel]
         st.info(f"Produto: {descricao}")
@@ -120,22 +121,17 @@ if aba == "🏷️ Emissão de Etiquetas":
                 prefixo = logic.extrair_prefixo(sku_sel)
                 ultimo = database.buscar_ultimo_num(prefixo)
                 
-                dados_para_planilha = [] # Lista para o Google Sheets
-                dados_para_pdf = []      # Lista para o PDF
+                dados_para_planilha = []
+                dados_para_pdf = []
                 
                 data_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 
-                # Prepara o lote todo na memória primeiro
                 for i in range(1, int(qtd) + 1):
                     novo_cod = f"{prefixo}{str(ultimo + i).zfill(10)}"
-                    
-                    # Formato da linha: QR Code, SKU, Pedido, Data, Status, Criado Por, Expedido Por
                     linha = [novo_cod, sku_sel, pedido, data_atual, "Pendente", st.session_state.usuario_logado, ""]
                     dados_para_planilha.append(linha)
-                    
                     dados_para_pdf.append((novo_cod, sku_sel, descricao, pedido))
                 
-                # ENVIO ÚNICO PARA O BANCO (Batch Update) - Resolve o erro 429
                 sucesso = database.salvar_lote_etiquetas(dados_para_planilha)
                 
                 if sucesso:
@@ -161,7 +157,6 @@ elif aba == "📋 Histórico & Relatórios":
         
         st.divider()
         st.subheader("📋 Checklist de Conferência")
-        # Converte todos os pedidos em texto antes de tentar ordenar, evitando o erro de tipos mistos
         pedidos_disp = sorted([str(p) for p in df['Pedido'].unique() if p is not None])
         ped_sel = st.selectbox("Escolha o Pedido:", pedidos_disp)
         
@@ -176,7 +171,6 @@ elif aba == "📋 Histórico & Relatórios":
                 pdf_check = logic.gerar_relatorio_conferencia(ped_sel, dados_conf)
                 st.download_button(f"📥 Baixar Checklist {ped_sel}", pdf_check, f"check_{ped_sel}.pdf", "application/pdf")
 
-# --- BLOCO DE REIMPRESSÃO (LOTE OU INDIVIDUAL) ---
         st.divider()
         st.subheader("🖨️ Reimpressão de Etiquetas")
         
@@ -187,22 +181,18 @@ elif aba == "📋 Histórico & Relatórios":
             if st.button("Gerar PDF do Pedido"):
                 itens = database.buscar_etiquetas_por_pedido(ped_reimprimir)
                 if itens:
-                    dados = [(it[0], it[1], logic.PRODUTOS.get(it[1], "N/A"), ped_reimprimir) for it in itens]
-                    pdf = logic.gerar_pdf_lote(dados)
+                    dados_lote = [(it[0], it[1], logic.PRODUTOS.get(it[1], "N/A"), ped_reimprimir) for it in itens]
+                    pdf = logic.gerar_pdf_lote(dados_lote)
                     st.download_button(f"📥 Baixar Lote {ped_reimprimir}", pdf, f"lote_{ped_reimprimir}.pdf")
 
         with aba_reimprimir[1]:
             cod_individual = st.text_input("Digite o Código do QR Code (ex: LOG0000000001)")
             if st.button("Gerar Etiqueta Individual"):
                 if cod_individual:
-                    # Busca os dados dessa etiqueta específica no DataFrame que já carregamos na tela
-                    # d[0] é o QR Code, d[1] é o SKU
                     match = [d for d in dados if d[0] == cod_individual]
-                    
                     if match:
                         q, s, p, dt, stt, u1, u2 = match[0]
                         desc = logic.PRODUTOS.get(s, "Produto não encontrado")
-                        # Geramos o PDF com apenas um item na lista
                         pdf_uni = logic.gerar_pdf_lote([(q, s, desc, p)])
                         st.success(f"✅ Etiqueta {q} localizada!")
                         st.download_button(f"📥 Baixar Etiqueta {q}", pdf_uni, f"etiqueta_{q}.pdf")

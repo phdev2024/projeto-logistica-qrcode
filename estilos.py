@@ -75,16 +75,10 @@ def aplicar_estilos_customizados():
         }}
         .header-title {{
             color: #ffffff !important;
-            font-size: 1.7rem;
-            font-weight: 800;
+            font-size: 1.35rem;
+            font-weight: 700;
             margin: 0;
             line-height: 1.2;
-        }}
-        .header-subtitle {{
-            color: #e0f2f1;
-            font-size: 0.92rem;
-            margin: 2px 0 0 0;
-            font-weight: 400;
         }}
         .user-badge {{
             background-color: rgba(255, 255, 255, 0.18);
@@ -96,17 +90,28 @@ def aplicar_estilos_customizados():
             font-weight: 600;
             backdrop-filter: blur(4px);
         }}
+
+        /* 5. Card Centralizado de Login */
+        .login-card {{
+            background-color: #ffffff;
+            padding: 24px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+            border-top: 4px solid {COR_PRIMARIA};
+            text-align: center;
+            margin-bottom: 15px;
+        }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
 
 
 def renderizar_cabecalho_executivo(usuario_logado=None):
-    nome_exibicao = usuario_logado if usuario_logado else "Usuário"
     """
     Renderiza uma faixa verde executiva integrada com Logo, Título e Usuário.
     """
-    # Converte o logo local em base64 para renderizar perfeitamente dentro do HTML
+    nome_exibicao = usuario_logado if usuario_logado else "Usuário"
+    
     logo_html = ""
     if os.path.exists("logo.png"):
         with open("logo.png", "rb") as image_file:
@@ -120,13 +125,13 @@ def renderizar_cabecalho_executivo(usuario_logado=None):
         <div style="display: flex; align-items: center; justify-content: flex-start;">
             {logo_html}
             <div style="margin-left: 20px;">
-                <h1 class="header-title" style="font-size: 1.35rem; font-weight: 700; color: #ffffff; margin: 0;">
+                <h2 class="header-title">
                     Gestão de Expedição & Ocupação de Estoque
-                </h1>
-                </div>
+                </h2>
+            </div>
         </div>
         <div>
-            <span class="user-badge">👤 {usuario_logado}</span>
+            <span class="user-badge">👤 {nome_exibicao}</span>
         </div>
     </div>
     """
