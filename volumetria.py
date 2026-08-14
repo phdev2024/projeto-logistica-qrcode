@@ -5,46 +5,77 @@ import io
 
 def renderizar_tela_volumetria(database, integracao):
     st.subheader("📊 Indicadores de Volumetria & Paletização")
-    st.caption("Cálculo automatizado de ocupação física, volume em m³ e estimativa de paletes por SKU e Base.")
+    st.caption("Cálculo parametrizado de cubagem, folga operacional e ocupação de porta-paletes.")
 
-    # 1. Carrega parâmetros dos produtos do banco (Google Sheets ou SQLite)
+    # --- CONTROLES DE PARÂMETROS NA BARRA LATERAL ---
+    with st.sidebar:
+        st.divider()
+        st.subheader("⚙️ Parâmetros do Palete")
+        
+        alt_vao = st.number_input(
+            "Altura do Vão (m):", 
+            min_value=0.50, max_value=3.00, value=1.50, step=0.05,
+            help="Altura total do vão livre na estrutura porta-paletes."
+        )
+        
+        alt_madeira = st.number_input(
+            "Altura da Madeira (m):", 
+            min_value=0.00, max_value=0.30, value=0.15, step=0.01,
+            help="Altura do estrado de madeira a ser descontada da carga."
+        )
+        
+        fator_ocupacao = st.slider(
+            "Fator de Eficiência / Margem (%):", 
+            min_value=50, max_value=100, value=90, step=5,
+            help="Margem para absorver espaços vazios entre caixas (90% = 10% de folga)."
+        )
+
+    # 1. Carrega parâmetros dos produtos do banco
     try:
         produtos_cadastrados = database.obter_lista_produtos_com_medidas()
     except Exception:
-        # Se ainda não atualizamos o database.py, inicializa um DataFrame básico
         produtos_cadastrados = pd.DataFrame(columns=['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m'])
 
     # 2. Botão para acionar busca de saldo na API
     col_btn, _ = st.columns([2, 2])
     with col_btn:
         if st.button("🔄 Buscar Estoque Atualizado da API"):
-            with st.spinner("Consultando API e efetuando cálculos..."):
+            with st.spinner("Consultando API e calculando saldos..."):
                 st.session_state.dados_estoque_api = integracao.obter_estoque_completo_api(database)
-                st.success("Dados de estoque carregados com sucesso!")
+                st.success("Dados de estoque atualizados!")
 
-    # Usa dados do estado da sessão se já tiverem sido carregados
     df_estoque = st.session_state.get('dados_estoque_api', pd.DataFrame())
 
     if df_estoque.empty:
-        st.info("💡 Clique no botão acima para puxar os saldos atualizados de estoque da API.")
+        st.info("💡 Clique no botão acima para carregar o estoque da API.")
         return
 
-    # 3. Filtro por Base/Depósito
+    # 3. Filtro por Base / Depósito
     if 'Base' in df_estoque.columns:
-        bases_disponiveis = ["Todas"] + list(df_estoque['Base'].unique())
+        bases_disponiveis = ["Todas"] + sorted(list(df_estoque['Base'].unique()))
         base_selecionada = st.selectbox("Filtrar por Base / Unidade:", bases_disponiveis)
         if base_selecionada != "Todas":
             df_estoque = df_estoque[df_estoque['Base'] == base_selecionada]
 
     # 4. Processamento dos Cálculos Matematizados
-    df_resultado, kpis = calculos_estoque.calcular_volumetria_paletes(df_estoque, produtos_cadastrados)
+    df_resultado, kpis = calculos_estoque.calcular_volumetria_paletes(
+        df_estoque=df_estoque, 
+        df_produtos=produtos_cadastrados,
+        altura_vao_m=alt_vao,
+        altura_madeira_m=alt_madeira,
+        fator_ocupacao_pct=fator_ocupacao
+    )
 
     # 5. Cartões de Indicadores Chave (KPIs)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("📦 Total Peças", f"{kpis['total_pecas']:,}".replace(",", "."))
     col2.metric("🏷️ Caixas (Packs)", f"{kpis['total_caixas']:,}".replace(",", "."))
     col3.metric("📐 Volumetria Total", f"{kpis['total_m3']} m³")
-    col4.metric("🏗️ Posições Paletes", f"{kpis['total_paletes']} PL")
+    col4.metric(
+        "🏗️ Posições Paletes", 
+        f"{kpis['total_paletes']} PL", 
+        help=f"Volume útil calculado por palete: {kpis['vol_util_palete']} m³"
+    )
 
     st.divider()
 
