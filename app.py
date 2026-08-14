@@ -7,6 +7,7 @@ from datetime import datetime
 import integracao
 import time
 import volumetria
+import estilos
 
 # 1. INICIALIZAÇÃO DO BANCO E DO ESTADO
 database.criar_tabelas()
@@ -14,7 +15,10 @@ database.criar_tabelas()
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
-st.set_page_config(page_title="Logcare Logística", page_icon="📦")
+st.set_page_config(page_title="Logcare Logística", page_icon="📦", layout="wide")
+estilos.aplicar_estilos_customizados()
+# --- CABEÇALHO EXECUTIVO PADRÃO ---
+estilos.renderizar_cabecalho_executivo(st.session_state.usuario_logado)
 
 # 2. SISTEMA DE LOGIN
 if not st.session_state.autenticado:
@@ -39,14 +43,21 @@ if not st.session_state.autenticado:
             st.error("Usuário ou senha incorretos")
     st.stop()
 
-# 3. CONFIGURAÇÃO DO MENU
+# 3. CONFIGURAÇÃO DO MENU EXECUTIVO
 ADMIN_USER = "Paulo"
-opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco", "Volumetria & Paletes"]
+
+# Opções com ícones intuitivos e padronizados
+opcoes_menu = [
+    "🏷️ Emissão de Etiquetas",
+    "🚚 Módulo de Expedição",
+    "📋 Histórico & Relatórios",
+    "📊 Volumetria & Paletes"
+]
 
 if st.session_state.usuario_logado == ADMIN_USER:
-    opcoes_menu.append("Gestão de Usuários")
+    opcoes_menu.append("👥 Gestão de Usuários")
 
-aba = st.sidebar.radio("Navegação:", opcoes_menu)
+aba = st.sidebar.radio("Módulos:", opcoes_menu)
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
@@ -69,21 +80,10 @@ if st.sidebar.button("🔄 Atualizar Lista de Produtos"):
 
 opcoes_menu = ["Gerar Etiquetas", "Expedição", "Consultar Banco", "Volumetria & Paletes"]
 
-
-st.title("📦 Sistema de Etiquetas QRCODE")
-
-col_l1, col_l2 = st.columns([1, 4])
-with col_l1:
-    try: st.image("logo.png", width=100)
-    except: st.write("🏢")
-with col_l2:
-    st.write("### Logcare Logística")
-    st.write("Departamento de Logística e Expedição")
-
 # --- CONTEÚDO DAS ABAS ---
 
-if aba == "Gerar Etiquetas":
-    st.subheader("🛠️ Emissão de Lote")
+if aba == "🏷️ Emissão de Etiquetas":
+    st.subheader("🏷️ Emissão de Etiquetas")
     
     # 1. Carrega os produtos com tratamento de segurança
     try:
@@ -142,15 +142,15 @@ if aba == "Gerar Etiquetas":
                 else:
                     st.error("Erro ao salvar no banco de dados. Tente novamente.")
 
-elif aba == "Expedição":
+elif aba == "🚚 Módulo de Expedição":
     st.subheader("🚚 Módulo de Expedição")
     cod_lido = st.text_input("Bipe o QR Code aqui")
     if cod_lido:
         res = database.atualizar_status_expedicao(cod_lido, st.session_state.usuario_logado)
         st.info(res)
 
-elif aba == "Consultar Banco":
-    st.subheader("🔍 Histórico e Relatórios")
+elif aba == "📋 Histórico & Relatórios":
+    st.subheader("📋 Histórico & Relatórios")
     dados = database.listar_etiquetas()
     if dados:
         df = pd.DataFrame(dados, columns=["QR Code", "SKU", "Pedido", "Data", "Status", "Criado Por", "Expedido Por"])
@@ -208,7 +208,7 @@ elif aba == "Consultar Banco":
                 else:
                     st.warning("Digite um código válido.")
 
-elif aba == "Gestão de Usuários":
+elif aba == "👥 Gestão de Usuários":
     st.subheader("👥 Gestão de Acessos (Admin)")
     st.success(f"Você está logado como ADMINISTRADOR: {st.session_state.usuario_logado}")
     
@@ -219,5 +219,5 @@ elif aba == "Gestão de Usuários":
     df_usuarios = pd.DataFrame(list(usuarios_credenciais.items()), columns=["Usuário", "Senha"])
     st.table(df_usuarios)
 
-elif aba == "Volumetria & Paletes":
+elif aba == "📊 Volumetria & Paletes":
     volumetria.renderizar_tela_volumetria(database, integracao)
