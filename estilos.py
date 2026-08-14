@@ -101,7 +101,8 @@ def aplicar_estilos_customizados():
     st.markdown(css, unsafe_allow_html=True)
 
 
-def renderizar_cabecalho_executivo(usuario_logado):
+def renderizar_cabecalho_executivo(usuario_logado=None):
+    nome_exibicao = usuario_logado if usuario_logado else "Usuário"
     """
     Renderiza uma faixa verde executiva integrada com Logo, Título e Usuário.
     """

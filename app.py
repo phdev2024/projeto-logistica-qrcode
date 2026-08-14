@@ -16,9 +16,12 @@ if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
 st.set_page_config(page_title="Logcare Logística", page_icon="📦", layout="wide")
+# Inicializa a sessão com segurança se ainda não existir
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = "Visitante"  # Ou None / seu nome padrão
 estilos.aplicar_estilos_customizados()
 # --- CABEÇALHO EXECUTIVO PADRÃO ---
-estilos.renderizar_cabecalho_executivo(st.session_state.usuario_logado)
+estilos.renderizar_cabecalho_executivo(st.session_state.get("usuario_logado", "Paulo"))
 
 # 2. SISTEMA DE LOGIN
 if not st.session_state.autenticado:
