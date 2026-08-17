@@ -150,6 +150,16 @@ elif aba == "🚚 Módulo de Expedição":
 
 elif aba == "📋 Histórico & Relatórios":
     st.subheader("📋 Histórico & Relatórios")
+    
+    # 1. CARREGA O DICIONÁRIO VIVO E ATUALIZADO DO BANCO
+    try:
+        produtos_cadastrados = database.obter_lista_produtos()
+    except Exception:
+        produtos_cadastrados = logic.PRODUTOS
+        
+    if not produtos_cadastrados:
+        produtos_cadastrados = logic.PRODUTOS
+
     dados = database.listar_etiquetas()
     if dados:
         df = pd.DataFrame(dados, columns=["QR Code", "SKU", "Pedido", "Data", "Status", "Criado Por", "Expedido Por"])
@@ -166,7 +176,8 @@ elif aba == "📋 Histórico & Relatórios":
                 dados_conf = []
                 for it in itens_ped:
                     c, s, stt = it
-                    d = logic.PRODUTOS.get(s, "Descrição não encontrada")
+                    # Busca a descrição no catálogo atualizado
+                    d = produtos_cadastrados.get(s, "Descrição não encontrada")
                     dados_conf.append((c, s, d))
                 pdf_check = logic.gerar_relatorio_conferencia(ped_sel, dados_conf)
                 st.download_button(f"📥 Baixar Checklist {ped_sel}", pdf_check, f"check_{ped_sel}.pdf", "application/pdf")
@@ -181,7 +192,8 @@ elif aba == "📋 Histórico & Relatórios":
             if st.button("Gerar PDF do Pedido"):
                 itens = database.buscar_etiquetas_por_pedido(ped_reimprimir)
                 if itens:
-                    dados_lote = [(it[0], it[1], logic.PRODUTOS.get(it[1], "N/A"), ped_reimprimir) for it in itens]
+                    # Agora busca a descrição no catálogo vivo!
+                    dados_lote = [(it[0], it[1], produtos_cadastrados.get(it[1], "N/A"), ped_reimprimir) for it in itens]
                     pdf = logic.gerar_pdf_lote(dados_lote)
                     st.download_button(f"📥 Baixar Lote {ped_reimprimir}", pdf, f"lote_{ped_reimprimir}.pdf")
 
@@ -192,7 +204,8 @@ elif aba == "📋 Histórico & Relatórios":
                     match = [d for d in dados if d[0] == cod_individual]
                     if match:
                         q, s, p, dt, stt, u1, u2 = match[0]
-                        desc = logic.PRODUTOS.get(s, "Produto não encontrado")
+                        # Busca a descrição no catálogo vivo!
+                        desc = produtos_cadastrados.get(s, "Produto não encontrado")
                         pdf_uni = logic.gerar_pdf_lote([(q, s, desc, p)])
                         st.success(f"✅ Etiqueta {q} localizada!")
                         st.download_button(f"📥 Baixar Etiqueta {q}", pdf_uni, f"etiqueta_{q}.pdf")
