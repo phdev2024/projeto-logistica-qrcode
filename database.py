@@ -276,64 +276,59 @@ def buscar_etiquetas_por_pedido(pedido):
 
 def salvar_produtos_sincronizados(produtos_dict):
     """
-    Sincroniza produtos da API preservando 100% das medidas manuais já cadastradas.
-    Utiliza merge de DataFrames para evitar qualquer perda ou deslocamento de células.
+    Sincroniza produtos novos da API preservando 100% das medidas manuais e casas decimais.
     """
     try:
         aba = conectar_google(nome_aba="Produtos")
-        dados = aba.get_all_records()
+        dados_brutos = aba.get_all_values()
         
-        # 1. Cria o DataFrame com os produtos novos da API
+        # Cria DataFrame dos novos produtos da API
         df_novos = pd.DataFrame([
             {"SKU": str(k).strip(), "Nome": str(v).strip()} 
             for k, v in produtos_dict.items()
         ])
 
-        if dados:
-            # 2. Converte os dados atuais do Sheets para DataFrame
-            df_existente = pd.DataFrame(dados)
+        if len(dados_brutos) > 1:
+            cabecalho = [str(c).strip() for c in dados_brutos[0]]
+            linhas = dados_brutos[1:]
+            df_existente = pd.DataFrame(linhas, columns=cabecalho)
             
-            # Garante que o SKU seja texto limpo em ambos
+            # Limpa SKU
             df_existente["SKU"] = df_existente["SKU"].astype(str).str.strip()
             
-            # Garante que as colunas de medidas existam
+            # Garante colunas de medidas
             for col in ["Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]:
                 if col not in df_existente.columns:
                     df_existente[col] = ""
 
-            # Separa o que é catálogo existente de medidas (para não perder nada)
-            colunas_medidas = [c for c in df_existente.columns if c not in ["Nome"]]
-            df_apenas_medidas = df_existente[colunas_medidas]
+            # Isola as medidas existentes para o merge seguro
+            colunas_medidas = ["SKU", "Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]
+            df_apenas_medidas = df_existente[[c for c in colunas_medidas if c in df_existente.columns]]
 
-            # Faz o merge: atualiza os Nomes novos da API e mantém as medidas cadastradas
+            # Faz o merge mantendo os nomes atualizados da API e as medidas intactas
             df_final = pd.merge(df_novos, df_apenas_medidas, on="SKU", how="left")
             
-            # Se havia produtos manuais antigos que não vieram na API, preserva-os também
+            # Preserva produtos manuais que não vieram na API
             skus_na_api = set(df_novos["SKU"])
             df_nao_api = df_existente[~df_existente["SKU"].isin(skus_na_api)]
             if not df_nao_api.empty:
                 df_final = pd.concat([df_final, df_nao_api], ignore_index=True)
-
         else:
-            # Planilha virgem
             df_final = df_novos
             for col in ["Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]:
                 df_final[col] = ""
 
-        # Preenche valores nulos com string vazia para o Sheets
         df_final = df_final.fillna("")
 
-        # 3. Grava de forma limpa e estruturada
+        # Grava de volta mantendo a formatação
         lista_para_gravar = [df_final.columns.values.tolist()] + df_final.values.tolist()
-        
-        # Atualiza a área de células exata
         aba.clear()
         aba.update("A1", lista_para_gravar)
-        print("✅ Produtos sincronizados com sucesso via Merge Seguro!")
+        print("✅ Produtos sincronizados mantendo as medidas e casas decimais!")
         return True
 
     except Exception as e:
-        print(f"⚠️ Erro ao sincronizar produtos no Sheets: {e}")
+        print(f"⚠️ Erro ao sincronizar produtos: {e}")
         return False
 
 @st.cache_data(ttl=600)
@@ -373,31 +368,33 @@ def obter_lista_produtos():
 
 def obter_lista_produtos_com_medidas():
     """
-    Busca a lista de produtos com as colunas de cubagem e pack.
-    Trata automaticamente valores vazios, textos e números com vírgula para evitar quebras de TypeError.
+    Lê a planilha preservando texto cru e converte vírgula para ponto decimal sem arredondar.
     """
     colunas_padrao = ['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m']
     try:
         aba = conectar_google(nome_aba="Produtos")
-        dados = aba.get_all_records()
+        dados_brutos = aba.get_all_values()
         
-        if not dados:
+        if len(dados_brutos) <= 1:
             return pd.DataFrame(columns=colunas_padrao)
             
-        df = pd.DataFrame(dados)
+        cabecalho = [str(c).strip() for c in dados_brutos[0]]
+        linhas = dados_brutos[1:]
         
-        # Garante que todas as colunas necessárias existam
+        df = pd.DataFrame(linhas, columns=cabecalho)
+        
+        # Garante que todas as colunas existam
         for col in colunas_padrao:
             if col not in df.columns:
-                df[col] = 0.0 if col != "Nome" and col != "SKU" else ""
+                df[col] = "0.0"
 
-        # Sanitiza colunas numéricas: converte vírgula para ponto e células vazias para 0.0
+        # Converte vírgula brasileira para ponto flutuante com precisão
         for col_num in ['Comp_m', 'Larg_m', 'Alt_m', 'Pack_Caixa']:
             df[col_num] = (
                 df[col_num]
                 .astype(str)
+                .str.replace(" ", "", regex=False)
                 .str.replace(",", ".", regex=False)
-                .str.strip()
             )
             df[col_num] = pd.to_numeric(df[col_num], errors="coerce").fillna(0.0)
 
