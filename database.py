@@ -276,36 +276,70 @@ def buscar_etiquetas_por_pedido(pedido):
 
 def salvar_produtos_sincronizados(produtos_dict):
     """
-    Recebe um dicionário { SKU: Nome } limpo e salva no banco ativo.
-    Se falhar o Google Sheets (Nuvem/Local), salva no SQLite automaticamente.
+    Sincroniza produtos novos vindos da API preservando as medidas (Comp_m, Larg_m, Alt_m, Pack_Caixa)
+    e quaisquer outras colunas preenchidas manualmente no Google Sheets.
     """
     try:
-        # Tenta conectar à aba 'Produtos' no Google Drive
         aba = conectar_google(nome_aba="Produtos")
-        aba.clear()  # Limpa os dados antigos para evitar duplicidades na planilha
+        dados_existentes = aba.get_all_values()
         
-        # Estrutura as linhas para gravação em lote
-        linhas = [["SKU", "Nome"]]  # Cabeçalho
-        for sku, nome in produtos_dict.items():
-            linhas.append([sku, nome])
+        # Se a aba estiver completamente vazia, cria o cabeçalho padrão completo
+        if not dados_existentes:
+            cabecalho = ["SKU", "Nome", "Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]
+            linhas = [cabecalho]
+            for sku, nome in produtos_dict.items():
+                linhas.append([sku, nome, "", "", "", ""])
+            aba.update("A1", linhas)
+            print("✅ Catálogo inicial criado com sucesso no Google Sheets!")
+            return True
+
+        cabecalho = dados_existentes[0]
+        linhas_atuais = dados_existentes[1:]
+
+        # Identifica as posições das colunas SKU e Nome
+        idx_sku = cabecalho.index("SKU") if "SKU" in cabecalho else 0
+        idx_nome = cabecalho.index("Nome") if "Nome" in cabecalho else 1
+
+        # Mapeia linhas existentes pelo SKU
+        mapa_linhas = {}
+        for idx, linha in enumerate(linhas_atuais):
+            # Garante que a linha tenha o tamanho exato do cabeçalho
+            while len(linha) < len(cabecalho):
+                linha.append("")
             
-        aba.update("A1", linhas)
-        print("✅ Produtos sincronizados com sucesso no Google Sheets!")
+            sku_existente = str(linha[idx_sku]).strip()
+            if sku_existente:
+                mapa_linhas[sku_existente] = linha
+
+        # Atualiza ou insere novos produtos
+        for sku_novo, nome_novo in produtos_dict.items():
+            sku_formatado = str(sku_novo).strip()
+            
+            if sku_formatado in mapa_linhas:
+                # SKU já existe: atualiza apenas a descrição, mantendo medidas intactas
+                mapa_linhas[sku_formatado][idx_nome] = nome_novo
+            else:
+                # SKU novo da API: cria nova linha mantendo colunas de medidas vazias
+                nova_linha = [""] * len(cabecalho)
+                nova_linha[idx_sku] = sku_formatado
+                nova_linha[idx_nome] = nome_novo
+                mapa_linhas[sku_formatado] = nova_linha
+
+        # Monta a matriz final consolidada
+        matriz_final = [cabecalho] + list(mapa_linhas.values())
+
+        # Atualiza o Google Sheets com o conjunto completo de dados
+        aba.update("A1", matriz_final)
+        print("✅ Produtos sincronizados com sucesso preservando todas as medidas!")
         return True
-        
+
     except Exception as e:
-        print(f"⚠️ Falha de rede ao salvar produtos no Sheets ({e}). Salvando dados no banco de testes SQLite local...")
+        print(f"⚠️ Falha ao salvar produtos no Sheets ({e}). Atualizando SQLite local...")
         try:
-            # Inicializa a tabela no SQLite caso ela não exista
             conectar_sqlite().close()
-            
             conn = sqlite3.connect(BANCO_LOCAL_SQLITE)
             cursor = conn.cursor()
             
-            # Limpa produtos locais antigos antes de atualizar
-            cursor.execute("DELETE FROM produtos_api")
-            
-            # Insere os novos produtos usando INSERT OR REPLACE
             dados_para_salvar = [(sku, nome) for sku, nome in produtos_dict.items()]
             cursor.executemany("""
                 INSERT OR REPLACE INTO produtos_api (sku, nome)
@@ -314,7 +348,7 @@ def salvar_produtos_sincronizados(produtos_dict):
             
             conn.commit()
             conn.close()
-            print("✅ Produtos sincronizados com sucesso no SQLite local!")
+            print("✅ Produtos sincronizados no SQLite local!")
             return True
         except Exception as err:
             st.error(f"Erro crítico ao salvar produtos localmente: {err}")
