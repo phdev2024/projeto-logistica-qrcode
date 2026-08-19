@@ -276,83 +276,65 @@ def buscar_etiquetas_por_pedido(pedido):
 
 def salvar_produtos_sincronizados(produtos_dict):
     """
-    Sincroniza produtos novos vindos da API preservando as medidas (Comp_m, Larg_m, Alt_m, Pack_Caixa)
-    e quaisquer outras colunas preenchidas manualmente no Google Sheets.
+    Sincroniza produtos da API preservando 100% das medidas manuais já cadastradas.
+    Utiliza merge de DataFrames para evitar qualquer perda ou deslocamento de células.
     """
     try:
         aba = conectar_google(nome_aba="Produtos")
-        dados_existentes = aba.get_all_values()
+        dados = aba.get_all_records()
         
-        # Se a aba estiver completamente vazia, cria o cabeçalho padrão completo
-        if not dados_existentes:
-            cabecalho = ["SKU", "Nome", "Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]
-            linhas = [cabecalho]
-            for sku, nome in produtos_dict.items():
-                linhas.append([sku, nome, "", "", "", ""])
-            aba.update("A1", linhas)
-            print("✅ Catálogo inicial criado com sucesso no Google Sheets!")
-            return True
+        # 1. Cria o DataFrame com os produtos novos da API
+        df_novos = pd.DataFrame([
+            {"SKU": str(k).strip(), "Nome": str(v).strip()} 
+            for k, v in produtos_dict.items()
+        ])
 
-        cabecalho = dados_existentes[0]
-        linhas_atuais = dados_existentes[1:]
-
-        # Identifica as posições das colunas SKU e Nome
-        idx_sku = cabecalho.index("SKU") if "SKU" in cabecalho else 0
-        idx_nome = cabecalho.index("Nome") if "Nome" in cabecalho else 1
-
-        # Mapeia linhas existentes pelo SKU
-        mapa_linhas = {}
-        for idx, linha in enumerate(linhas_atuais):
-            # Garante que a linha tenha o tamanho exato do cabeçalho
-            while len(linha) < len(cabecalho):
-                linha.append("")
+        if dados:
+            # 2. Converte os dados atuais do Sheets para DataFrame
+            df_existente = pd.DataFrame(dados)
             
-            sku_existente = str(linha[idx_sku]).strip()
-            if sku_existente:
-                mapa_linhas[sku_existente] = linha
-
-        # Atualiza ou insere novos produtos
-        for sku_novo, nome_novo in produtos_dict.items():
-            sku_formatado = str(sku_novo).strip()
+            # Garante que o SKU seja texto limpo em ambos
+            df_existente["SKU"] = df_existente["SKU"].astype(str).str.strip()
             
-            if sku_formatado in mapa_linhas:
-                # SKU já existe: atualiza apenas a descrição, mantendo medidas intactas
-                mapa_linhas[sku_formatado][idx_nome] = nome_novo
-            else:
-                # SKU novo da API: cria nova linha mantendo colunas de medidas vazias
-                nova_linha = [""] * len(cabecalho)
-                nova_linha[idx_sku] = sku_formatado
-                nova_linha[idx_nome] = nome_novo
-                mapa_linhas[sku_formatado] = nova_linha
+            # Garante que as colunas de medidas existam
+            for col in ["Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]:
+                if col not in df_existente.columns:
+                    df_existente[col] = ""
 
-        # Monta a matriz final consolidada
-        matriz_final = [cabecalho] + list(mapa_linhas.values())
+            # Separa o que é catálogo existente de medidas (para não perder nada)
+            colunas_medidas = [c for c in df_existente.columns if c not in ["Nome"]]
+            df_apenas_medidas = df_existente[colunas_medidas]
 
-        # Atualiza o Google Sheets com o conjunto completo de dados
-        aba.update("A1", matriz_final)
-        print("✅ Produtos sincronizados com sucesso preservando todas as medidas!")
+            # Faz o merge: atualiza os Nomes novos da API e mantém as medidas cadastradas
+            df_final = pd.merge(df_novos, df_apenas_medidas, on="SKU", how="left")
+            
+            # Se havia produtos manuais antigos que não vieram na API, preserva-os também
+            skus_na_api = set(df_novos["SKU"])
+            df_nao_api = df_existente[~df_existente["SKU"].isin(skus_na_api)]
+            if not df_nao_api.empty:
+                df_final = pd.concat([df_final, df_nao_api], ignore_index=True)
+
+        else:
+            # Planilha virgem
+            df_final = df_novos
+            for col in ["Comp_m", "Larg_m", "Alt_m", "Pack_Caixa"]:
+                df_final[col] = ""
+
+        # Preenche valores nulos com string vazia para o Sheets
+        df_final = df_final.fillna("")
+
+        # 3. Grava de forma limpa e estruturada
+        lista_para_gravar = [df_final.columns.values.tolist()] + df_final.values.tolist()
+        
+        # Atualiza a área de células exata
+        aba.clear()
+        aba.update("A1", lista_para_gravar)
+        print("✅ Produtos sincronizados com sucesso via Merge Seguro!")
         return True
 
     except Exception as e:
-        print(f"⚠️ Falha ao salvar produtos no Sheets ({e}). Atualizando SQLite local...")
-        try:
-            conectar_sqlite().close()
-            conn = sqlite3.connect(BANCO_LOCAL_SQLITE)
-            cursor = conn.cursor()
-            
-            dados_para_salvar = [(sku, nome) for sku, nome in produtos_dict.items()]
-            cursor.executemany("""
-                INSERT OR REPLACE INTO produtos_api (sku, nome)
-                VALUES (?, ?)
-            """, dados_para_salvar)
-            
-            conn.commit()
-            conn.close()
-            print("✅ Produtos sincronizados no SQLite local!")
-            return True
-        except Exception as err:
-            st.error(f"Erro crítico ao salvar produtos localmente: {err}")
-            return False
+        print(f"⚠️ Erro ao sincronizar produtos no Sheets: {e}")
+        return False
 
 @st.cache_data(ttl=600)
 def obter_lista_produtos():
@@ -392,26 +374,39 @@ def obter_lista_produtos():
 def obter_lista_produtos_com_medidas():
     """
     Busca a lista de produtos com as colunas de cubagem e pack.
-    Retorna um DataFrame do Pandas.
+    Trata automaticamente valores vazios, textos e números com vírgula para evitar quebras de TypeError.
     """
+    colunas_padrao = ['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m']
     try:
         aba = conectar_google(nome_aba="Produtos")
-        dados = aba.get_all_values()
+        dados = aba.get_all_records()
         
-        if len(dados) <= 1:
-            return pd.DataFrame(columns=['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m'])
+        if not dados:
+            return pd.DataFrame(columns=colunas_padrao)
             
-        # Pega o cabeçalho e os dados
-        cabecalho = [str(c).strip() for c in dados[0]]
-        linhas = dados[1:]
+        df = pd.DataFrame(dados)
         
-        df = pd.DataFrame(linhas, columns=cabecalho)
+        # Garante que todas as colunas necessárias existam
+        for col in colunas_padrao:
+            if col not in df.columns:
+                df[col] = 0.0 if col != "Nome" and col != "SKU" else ""
+
+        # Sanitiza colunas numéricas: converte vírgula para ponto e células vazias para 0.0
+        for col_num in ['Comp_m', 'Larg_m', 'Alt_m', 'Pack_Caixa']:
+            df[col_num] = (
+                df[col_num]
+                .astype(str)
+                .str.replace(",", ".", regex=False)
+                .str.strip()
+            )
+            df[col_num] = pd.to_numeric(df[col_num], errors="coerce").fillna(0.0)
+
+        df['SKU'] = df['SKU'].astype(str).str.strip()
         return df
         
     except Exception as e:
-        print(f"⚠️ Lendo medidas do SQLite local devido a: {e}")
-        # Retorna um DataFrame vazio padronizado para não travar
-        return pd.DataFrame(columns=['SKU', 'Nome', 'Pack_Caixa', 'Comp_m', 'Larg_m', 'Alt_m'])
+        print(f"⚠️ Erro ao obter medidas: {e}")
+        return pd.DataFrame(columns=colunas_padrao)
 
 def obter_cadastro_bases():
     """
